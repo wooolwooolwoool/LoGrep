@@ -2,7 +2,7 @@
   "name": "LoGrep",
   "displayName": "Grep and Highlight",
   "description": "Grep and Highlight Tool to assist to check logs",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "icon": "media/icon.png",
   "publisher": "woool",
   "repository": {
@@ -39,17 +39,7 @@
         }
       ]
     },
-    "commands": [],
-    "configuration": {
-      "title": "Grep Extension",
-      "properties": {
-        "grepExtension.settings": {
-          "type": "object",
-          "default": {},
-          "description": "Saved settings for the Grep extension"
-        }
-      }
-    }
+    "commands": []
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

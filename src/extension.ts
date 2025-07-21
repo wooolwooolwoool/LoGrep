@@ -127,14 +127,22 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     });
 
     // 2. 各行に強調spanを埋め込む
+    // 特殊文字置換
+    var result_join = results.join('\n')
+          .replace(/&/g, '&amp;')   // 必ず最初に & を置換する
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+    searchWords.forEach(({ word, color }) => {
+      const className = colorClassMap.get(color)!;
+      // 正規表現で複数一致対応
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escapedWord, 'g');
+      result_join = result_join .replace(regex, `<span class="highlight ${className}">${word}</span>`);
+    });
+    results = result_join.split('\n');
     const highlightedResults = results.map(line => {
-      searchWords.forEach(({ word, color }) => {
-        const className = colorClassMap.get(color)!;
-        // 正規表現で複数一致対応
-        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escapedWord, 'g');
-        line = line.replace(regex, `<span class="highlight ${className}">${word}</span>`);
-      });
       return `<div class="log-line">${line}</div>`;
     }).join('');
 
@@ -169,7 +177,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
             pre {
               white-space: pre-wrap;
               word-wrap: break-word;
-              font-size: 14px; /* 初期フォントサイズ */
+              font-size: 15px; /* 初期フォントサイズ */
             }
             button {
                 margin: 2px;
@@ -233,8 +241,8 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
         </head>
         <body>
           <div class="sticky">
-            <button onclick="resizeText(2)">Zoom In</button>
-            <button onclick="resizeText(-2)">Zoom Out</button>
+            <button onclick="resizeText(1)">Zoom In</button>
+            <button onclick="resizeText(-1)">Zoom Out</button>
             <label>
                 <input type="checkbox" id="wrapToggle" />
                 Enable wrap
@@ -386,7 +394,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
                   searchIndex = index;
 
                   const target = Matches[searchIndex];
-                  target.scrollIntoView();
+                  target.scrollIntoView(false);
                   update_serchcount(searchIndex + 1);
               }
 
