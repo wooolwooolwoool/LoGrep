@@ -1,4 +1,10 @@
 import * as vscode from 'vscode';
+import fs from "fs";
+import path from "path";
+
+function loadTemplate(name: string): string {
+  return fs.readFileSync(path.join(__dirname, "templates", `${name}.html`), "utf-8");
+}
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Grep extension is activated');
@@ -32,11 +38,15 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.getHtml();
     this.getSettingsList(webviewView.webview);
-    const lastState = this.context.workspaceState.get<{ grepWords: string[], searchWords: { word: string; color: string }[], settingName: string }>('lastState');
+    const lastState = this.context.workspaceState.get<{ grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], settingName: string }>('lastState');
     if (lastState) {
+      if (!lastState.grepVWords) {
+        lastState.grepVWords = [];
+      }
       webviewView.webview.postMessage({
         command: 'loadSettings',
         grepWords: lastState.grepWords,
+        grepVWords: lastState.grepVWords,
         searchWords: lastState.searchWords,
         settingName: lastState.settingName
       });
@@ -52,9 +62,9 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.command === 'grep') {
-        this.grepInActiveEditor(message.grepWords, message.searchWords);
+        this.grepInActiveEditor(message.grepWords, message.grepVWords, message.searchWords);
       } else if (message.command === 'saveSettings') {
-        this.saveSettings(message.name, message.grepWords, message.searchWords, webviewView.webview);
+        this.saveSettings(message.name, message.grepWords, message.grepVWords, message.searchWords, webviewView.webview);
       } else if (message.command === 'loadSettings') {
         this.loadSettings(message.name, webviewView.webview);
       } else if (message.command === 'deleteSetting') {
@@ -62,30 +72,34 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       } else if (message.command === 'Logger') {
         this.Loggger(webviewView.webview, message.msg);
       } else if (message.command === 'saveSettings_current') {
-        this.saveStateFromWebview(message.grepWords, message.searchWords, message.settingName, webviewView.webview);
+        this.saveStateFromWebview(message.grepWords, message.grepVWords, message.searchWords, message.settingName, webviewView.webview);
       }
       webviewView.webview.postMessage({ command: 'Complete' });
     });
   }
 
   // state を保存するメソッド
-  private async saveStateFromWebview(grepWords: string[], searchWords: { word: string; color: string }[], settingName: string, webview: vscode.Webview) {
-    const response = {grepWords: grepWords, searchWords: searchWords, settingName: settingName};
+  private async saveStateFromWebview(grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], settingName: string, webview: vscode.Webview) {
+    const response = {grepWords: grepWords, grepVWords: grepVWords, searchWords: searchWords, settingName: settingName};
     if (response) {
       this.context.workspaceState.update('lastState', response);
       console.log('State saved:', response);
     }
   }
 
+  // state を復元するメソッド
   private async restoreState(webview: vscode.Webview) {
-    const state = this.context.workspaceState.get<{ grepWords: string[], searchWords: { word: string; color: string }[], settingName: string}>('lastState');
+    const state = this.context.workspaceState.get<any>('lastState');
+    if (!state.grepVWords) {
+      state.grepVWords = [];
+    }
     if (state) {
-      webview.postMessage({ command: 'loadSettings', grepWords: state.grepWords, searchWords: state.searchWords, settingName: state.settingName });
+      webview.postMessage({ command: 'loadSettings', grepWords: state.grepWords, grepVWords: state.grepVWords, searchWords: state.searchWords, settingName: state.settingName });
       console.log('State restored:', state);
     }
   }
 
-  private async grepInActiveEditor(grepWords: string[], searchWords: { word: string; color: string }[]) {
+  private async grepInActiveEditor(grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[]) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showErrorMessage('No active editor found');
@@ -94,12 +108,39 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
     const doc = editor.document;
     let results: string[] = [];
+    const grepWords_re: string[] = grepWords.filter(Boolean);
+    const grepVWords_re: string[] = grepVWords.filter(Boolean);
 
-    for (let line = 0; line < doc.lineCount; line++) {
-      const text = doc.lineAt(line).text;
-      if (grepWords.some(word => text.includes(word))) {
-        //results.push(`${String(line + 1).padStart(8, ' ')}: ${text}`);
-        results.push(`${text}`);
+    // 高速化のため条件を分岐
+    if ( grepWords_re.length === 0 ) {
+      // Grepワードが空の場合は-vのみ
+      for (let line = 0; line < doc.lineCount; line++) {
+        const text = doc.lineAt(line).text;
+        if ( grepVWords_re.length === 0) {
+          results.push(`${text}`);
+        } else {
+          if (!grepVWords_re.some(word => text.includes(word))) {
+            results.push(`${text}`);
+          }
+        }
+      }
+    } else if (grepVWords_re.length === 0) {
+      // -vワードが空の場合はGrepのみ
+      for (let line = 0; line < doc.lineCount; line++) {
+        const text = doc.lineAt(line).text;
+        if (grepWords_re.some(word => text.includes(word))) {
+          results.push(`${text}`);
+        }
+      }
+    } else {
+      // 両方ある場合
+      for (let line = 0; line < doc.lineCount; line++) {
+        const text = doc.lineAt(line).text;
+        if (grepWords_re.some(word => text.includes(word))) {
+          if (grepVWords_re.length === 0 || !grepVWords_re.some(word => text.includes(word))) {
+            results.push(`${text}`);
+          }
+        }
       }
     }
 
@@ -417,23 +458,24 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     `;
   }
 
-  private async saveSettings(name: string, grepWords: string[], searchWords: { word: string; color: string }[], webview: vscode.Webview) {
+  private async saveSettings(name: string, grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], webview: vscode.Webview) {
     const config = vscode.workspace.getConfiguration('grepExtension');
     const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
-    currentSettings[name] = { grepWords, searchWords };
+    currentSettings[name] = { grepWords, grepVWords, searchWords };
 
     try {
       await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(`Settings '${name}' saved`);
 
       // backup削除（正常に保存できた場合）
-      await this.context.workspaceState.update('backup', undefined);
+      await this.context.workspaceState.update('grepExtension_backup', undefined);
     } catch (error) {
-      vscode.window.showWarningMessage(`Settings '${name}' could not be saved to global settings. Backup saved instead.`);
+      vscode.window.showInformationMessage(`Settings '${name}' saved to Backup`);
 
       // バックアップとして保存
-      const backup = { name, grepWords, searchWords };
-      await this.context.workspaceState.update('backup', backup);
+      let backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+      backup[name] = { grepWords, grepVWords, searchWords };
+      await this.context.workspaceState.update('grepExtension_backup', backup);
     }
 
     this.getSettingsList(webview);
@@ -441,14 +483,19 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
   private async loadSettings(name: string, webview: vscode.Webview) {
     // まずバックアップがあるか確認し、あればそちらを優先
-    const backup = this.context.workspaceState.get<{ name: string, grepWords: string[], searchWords: { word: string, color: string }[] }>('backup');
+    const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup');
 
-    if (backup && backup.name === name) {
-      vscode.window.showWarningMessage(`Loaded backup settings for '${name}'`);
+    if (backup && backup[name]) {
+      // vscode.window.showWarningMessage(`Loaded backup settings for '${name}'`);
+      console.log(`Loaded backup settings for '${name}'`);
+      if (!backup.grepVWords) {
+        backup.grepVWords = [];
+      }
       webview.postMessage({
         command: 'loadSettings',
-        grepWords: backup.grepWords,
-        searchWords: backup.searchWords,
+        grepWords: backup[name].grepWords,
+        grepVWords: backup[name].grepVWords,
+        searchWords: backup[name].searchWords,
         settingName: name
       });
       return;
@@ -457,9 +504,13 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     // 通常の設定を読み込む
     const config = vscode.workspace.getConfiguration('grepExtension').get<{ [key: string]: any }>('settings');
     if (config && config[name]) {
+      if (!config[name].grepVWords) {
+        config[name].grepVWords = [];
+      }
       webview.postMessage({
         command: 'loadSettings',
         grepWords: config[name].grepWords,
+        grepVWords: config[name].grepVWords,
         searchWords: config[name].searchWords,
         settingName: name
       });
@@ -476,9 +527,15 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
     const config = vscode.workspace.getConfiguration('grepExtension');
     const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
-    currentSettings[name] = undefined;
-    await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
-
+    if (currentSettings && currentSettings[name]) {
+      currentSettings[name] = undefined;
+      await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
+    }
+    const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+    if (backup && backup[name]) {
+      backup[name] = undefined;
+      await this.context.workspaceState.update('grepExtension_backup', backup);
+    }
     vscode.window.showInformationMessage(`Settings '${name}' deleted`);
 
     // 削除後に一覧を更新
@@ -493,7 +550,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     const settings = new Set(Object.keys(config));
 
     // バックアップの名前があれば追加
-    const backup = this.context.workspaceState.get<{ name: string }>('backup');
+    const backup = this.context.workspaceState.get<{ name: string }>('grepExtension_backup');
     if (backup?.name) {
       settings.add(backup.name);
     }
@@ -594,10 +651,17 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
         <body>
           <h3>Grep</h3>
           <div id="grepContainer">
-            <input type="text" class="grepInput" placeholder="Enter grep word" />
+            <input type="text" class="grepInput" placeholder="Enter word" />
           </div>
           <div class="center-button">
             <button-sub onclick="addGrepWord()">+</button>
+          </div>
+          <h3>Grep (-v, --invert-match)</h3>
+          <div id="grepVContainer">
+            <input type="text" class="grepVInput" placeholder="Enter word" />
+          </div>
+          <div class="center-button">
+            <button-sub onclick="addGrepVWord()">+</button>
           </div>
           <h3>Highlight</h3>
           <div id="searchWordsContainer"></div>
@@ -643,20 +707,21 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
             function saveSettings_current() {
               const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+              const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
               const searchWords = Array.from(document.getElementsByClassName('searchInput')).map(input => ({
                 word: input.value,
                 color: input.nextElementSibling.style.backgroundColor
               })).filter(item => item.word);
               const settingName = document.getElementById('settingName').value;
-              vscode.postMessage({ command: 'saveSettings_current', grepWords, searchWords, settingName });
+              vscode.postMessage({ command: 'saveSettings_current', grepWords, grepVWords, searchWords, settingName });
             }
 
-            function addGrepWord_load(word) {
-              const container = document.getElementById('grepContainer');
+            function addGrepWord_load(word, container_name, class_name) {
+              const container = document.getElementById(container_name);
               const input = document.createElement('input');
               input.type = 'text';
-              input.className = 'grepInput';
-              input.placeholder = 'Enter grep word';
+              input.className = class_name;
+              input.placeholder = 'Enter word';
               if (word != "") {
                 input.value = word;
               }
@@ -693,7 +758,11 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
             }
 
             function addGrepWord() {
-              addGrepWord_load("");
+              addGrepWord_load("", "grepContainer", "grepInput");
+            }
+
+            function addGrepVWord() {
+              addGrepWord_load("", "grepVContainer", "grepVInput");
             }
 
             function addSearchWord() {
@@ -716,6 +785,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
             function startGrep() {
               const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+              const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
               const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
                 word: input.value,
                 color: input.nextElementSibling.style.backgroundColor
@@ -726,6 +796,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
               vscode.postMessage({
                 command: 'grep',
                 grepWords,
+                grepVWords,
                 searchWords
               });
             }
@@ -734,11 +805,12 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
               const settingName = document.getElementById('settingName').value;
               if (!settingName) return;
               const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+              const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
               const searchWords = Array.from(document.getElementsByClassName('searchInput')).map(input => ({
                 word: input.value,
                 color: input.nextElementSibling.style.backgroundColor
               })).filter(item => item.word);
-              vscode.postMessage({ command: 'saveSettings', name: settingName, grepWords, searchWords });
+              vscode.postMessage({ command: 'saveSettings', name: settingName, grepWords, grepVWords, searchWords });
             }
 
             function loadSettings() {
@@ -754,22 +826,24 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
             function clearAll() {
               const grepContainer = document.getElementById('grepContainer');
               grepContainer.innerHTML = '';
+              const grepVContainer = document.getElementById('grepVContainer');
+              grepVContainer.innerHTML = '';
               const searchContainer = document.getElementById('searchWordsContainer');
               searchContainer.innerHTML = '';
             }
 
             function clearBrank() {
               const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+              const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
               const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
                 word: input.value,
                 color: input.nextElementSibling.style.backgroundColor
               })).filter(item => item.word);
-              const grepContainer = document.getElementById('grepContainer');
-              grepContainer.innerHTML = '';
-              const searchContainer = document.getElementById('searchWordsContainer');
-              searchContainer.innerHTML = '';
 
-              grepWords.forEach(word => addGrepWord_load(word));
+              clearAll();
+
+              grepWords.forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+              grepVWords.forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
               searchWords.forEach(item => addSearchWord_load(item.word, item.color));
             }
 
@@ -778,12 +852,9 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
                 const jsonInput = document.getElementById('importSettingsinput').value;
 
                 const json = JSON.parse(jsonInput);
-                const grepContainer = document.getElementById('grepContainer');
-                grepContainer.innerHTML = '';
-                json["Grep"].forEach(word => addGrepWord_load(word));
-
-                const searchContainer = document.getElementById('searchWordsContainer');
-                searchContainer.innerHTML = '';
+                clearAll();
+                json["Grep"].forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+                json["Grep_v"].forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
                 json["Highlight"].forEach(item => addSearchWord_load(item.word, item.color));
 
               } catch (error) {
@@ -793,11 +864,12 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
             function exportSettings() {
                 try {
                   const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+                  const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
                   const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
                     word: input.value,
                     color: input.nextElementSibling.style.backgroundColor
                   })).filter(item => item.word);
-                  jsonObject = { "Grep": grepWords, "Highlight": searchWords };
+                  jsonObject = { "Grep": grepWords, "Grep_v": grepVWords, "Highlight": searchWords };
                   const jsonOutput = document.getElementById('importSettingsinput');
                   jsonOutput.value = JSON.stringify(jsonObject);
                 } catch (error) {
@@ -808,14 +880,11 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
             window.addEventListener('message', event => {
               const message = event.data;
               if (message.command === 'loadSettings') {
+                clearAll();
                 // Grepワードのフォームをクリアして更新
-                const grepContainer = document.getElementById('grepContainer');
-                grepContainer.innerHTML = '';
-                message.grepWords.forEach(word => addGrepWord_load(word));
-
+                message.grepWords.forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+                message.grepVWords.forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
                 // Searchワードのフォームをクリアして更新
-                const searchContainer = document.getElementById('searchWordsContainer');
-                searchContainer.innerHTML = '';
                 message.searchWords.forEach(item => addSearchWord_load(item.word, item.color));
 
                 const settingName = document.getElementById('settingName');
@@ -825,7 +894,6 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
                 loadbuttun.textContent = 'Load';
                 loadbuttun.disabled = false;
                 saveSettings_current();
-
               } else if (message.command === 'updateSettingsList') {
                 const settingList = document.getElementById('settingList');
                 settingList.innerHTML = '';

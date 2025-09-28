@@ -11,6 +11,10 @@ Grep and Highlight Log.
 You can Grep by multi word.
 Log is greped lines include any word.
 
+### Grep (-v, --invert-match)
+
+This is the same as the -v option.
+
 ### Highlight
 
 You can Highlight by multi word.
