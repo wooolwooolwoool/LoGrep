@@ -2,7 +2,7 @@
   "name": "LoGrep",
   "displayName": "Grep and Highlight",
   "description": "Grep and Highlight Tool to assist to check logs",
-  "version": "0.0.10",
+  "version": "0.1.0",
   "icon": "media/icon.png",
   "publisher": "woool",
   "repository": {
