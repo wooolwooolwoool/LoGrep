@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 10px;
+    }
+    input, button, button-main, button-sub {
+        font-size: 12px;
+        padding: 4px;
+        width: calc(100% - 16px);
+    }
+    button, button-main, button-sub {
+        cursor: pointer;
+        margin-top: 10px;
+        text-align: center;
+        border-width: 1px;
+    }
+    button {
+        background-color:rgba(249, 249, 249, 0.83);
+        color: black;
+    }
+    button-sub {
+        background-color:rgba(249, 249, 249, 0.83);
+        color: black;
+    }
+    button-main {
+        background-color: #0066CC;
+        color: white;
+    }
+    button:hover {
+        background-color: gray;
+    }
+    button-sub:hover {
+        background-color: gray;
+    }
+    button-main:hover {
+        background-color: #006699;
+    }
+    select {
+        width: 100%;
+        padding: 4px;
+        margin-top: 10px;
+    }
+    .search-word {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+    }
+    .color-box {
+        width: 16px;
+        height: 16px;
+        margin-left: 5px;
+        border: 1px solid #ccc;
+    }
+    .center-button {
+        display: flex;
+        justify-content: center;
+        margin-top: 5px;
+    }
+
+    #colorList:focus {
+        background-color: inherit; /* 選択中の背景色を変えない */
+        color: inherit;
+    }
+    #colorList option:focus {
+        background-color: inherit; /* ドロップダウンの背景色 */
+        color: black; /* 文字色 */
+    }
+    </style>
+</head>
+<body>
+    <h3>Grep</h3>
+    <div id="grepContainer">
+    <input type="text" class="grepInput" placeholder="Enter word" />
+    </div>
+    <div class="center-button">
+    <button-sub onclick="addGrepWord()">+</button>
+    </div>
+    <h3>Grep (-v, --invert-match)</h3>
+    <div id="grepVContainer">
+    <input type="text" class="grepVInput" placeholder="Enter word" />
+    </div>
+    <div class="center-button">
+    <button-sub onclick="addGrepVWord()">+</button>
+    </div>
+    <h3>Highlight</h3>
+    <div id="searchWordsContainer"></div>
+    <div class="button">
+    <!-- <button-sub onclick="addSearchWord()">+</button> -->
+    <select id="colorList"></select>
+    </div>
+    <div class="center-button">
+    <button-main onclick="startGrep()" id="MainButtun">Grep & Highlight</button>
+    </div>
+    <div class="center-button">
+    <button onclick="clearAll()" id="ClearButtun">Clear All</button>
+    <button onclick="clearBrank()" id="ClearButtun">Clear Brank</button>
+    </div>
+
+    <hr>
+
+    <h3>Setting Save & Load</h3>
+    <input id="settingName" type="text" placeholder="Setting name" />
+    <div class="center-button">
+    <button onclick="saveSettings()">Save</button>
+    </div>
+    <select id="settingList"></select>
+    <div class="center-button">
+    <button onclick="loadSettings()" id="LoadButtun">Load</button>
+    <button onclick="deleteSetting()" id="DelButtun">Delete</button>
+    </div>
+
+    <hr>
+
+    <h3>Import & Export</h3>
+    <div class="center-button">
+    <input id="importSettingsinput" type="text" placeholder="Setting as JSON" />
+    </div>
+    <div class="center-button">
+    <button onclick="importSettings()">Import</button>
+    <button onclick="exportSettings()">Export</button>
+    </div>
+
+    <script>
+    const vscode = acquireVsCodeApi();
+    const colors = ${Colors};
+
+    function saveSettings_current() {
+        const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+        const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
+        const searchWords = Array.from(document.getElementsByClassName('searchInput')).map(input => ({
+        word: input.value,
+        color: input.nextElementSibling.style.backgroundColor
+        })).filter(item => item.word);
+        const settingName = document.getElementById('settingName').value;
+        vscode.postMessage({ command: 'saveSettings_current', grepWords, grepVWords, searchWords, settingName });
+    }
+
+    function addGrepWord_load(word, container_name, class_name) {
+        const container = document.getElementById(container_name);
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = class_name;
+        input.placeholder = 'Enter word';
+        if (word != "") {
+        input.value = word;
+        }
+
+        input.addEventListener('input', (event) => {
+        saveSettings_current();
+        });
+        container.appendChild(input);
+    }
+
+    function addSearchWord_load(word, color) {
+        const container = document.getElementById('searchWordsContainer');
+        const index = container.children.length;
+        const div = document.createElement('div');
+        div.className = 'search-word';
+        if (word != "") {
+        div.innerHTML = `
+            <input type="text" class="searchInput" placeholder="Enter search word" value="${word}" />
+            <div class="color-box" style="background-color: ${color}"></div>
+        `;
+        } else {
+        div.innerHTML = `
+            <input type="text" class="searchInput" placeholder="Enter search word" />
+            <div class="color-box" style="background-color: ${color}"></div>
+        `;
+        }
+        const searchInput = div.querySelector('.searchInput');
+        const handleInput = (event) => {
+        saveSettings_current();
+        };
+        searchInput.addEventListener('input', handleInput);
+
+        container.appendChild(div);
+    }
+
+    function addGrepWord() {
+        addGrepWord_load("", "grepContainer", "grepInput");
+    }
+
+    function addGrepVWord() {
+        addGrepWord_load("", "grepVContainer", "grepVInput");
+    }
+
+    function addSearchWord() {
+        const container = document.getElementById('searchWordsContainer');
+        const index = container.children.length;
+        const color = colors[index % colors.length];
+        addSearchWord_load("", color);
+    }
+
+    function deleteSetting() {
+        const settingName = document.getElementById('settingList').value;
+        delbuttun = document.getElementById('DelButtun');
+        delbuttun.textContent = 'Deleting...';
+        if (!settingName) {
+        vscode.postMessage({ command: 'deleteSetting', name: '' });
+        return;
+        }
+        vscode.postMessage({ command: 'deleteSetting', name: settingName });
+    }
+
+    function startGrep() {
+        const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+        const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
+        const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
+        word: input.value,
+        color: input.nextElementSibling.style.backgroundColor
+        })).filter(item => item.word);
+        mainbuttun = document.getElementById('MainButtun');
+        mainbuttun.textContent = 'Processing...';
+
+        vscode.postMessage({
+        command: 'grep',
+        grepWords,
+        grepVWords,
+        searchWords
+        });
+    }
+
+    function saveSettings() {
+        const settingName = document.getElementById('settingName').value;
+        if (!settingName) return;
+        const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+        const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
+        const searchWords = Array.from(document.getElementsByClassName('searchInput')).map(input => ({
+        word: input.value,
+        color: input.nextElementSibling.style.backgroundColor
+        })).filter(item => item.word);
+        vscode.postMessage({ command: 'saveSettings', name: settingName, grepWords, grepVWords, searchWords });
+    }
+
+    function loadSettings() {
+        const settingName = document.getElementById('settingList').value;
+        loadbuttun = document.getElementById('LoadButtun');
+        loadbuttun.textContent = 'Loading...';
+        loadbuttun.disabled = true;
+        vscode.postMessage({ command: 'loadSettings', name: settingName });
+        const input = document.getElementById('settingName');
+        input.value = settingName;
+    }
+
+    function clearAll() {
+        const grepContainer = document.getElementById('grepContainer');
+        grepContainer.innerHTML = '';
+        const grepVContainer = document.getElementById('grepVContainer');
+        grepVContainer.innerHTML = '';
+        const searchContainer = document.getElementById('searchWordsContainer');
+        searchContainer.innerHTML = '';
+    }
+
+    function clearBrank() {
+        const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+        const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
+        const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
+        word: input.value,
+        color: input.nextElementSibling.style.backgroundColor
+        })).filter(item => item.word);
+
+        clearAll();
+
+        grepWords.forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+        grepVWords.forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
+        searchWords.forEach(item => addSearchWord_load(item.word, item.color));
+    }
+
+    function importSettings() {
+        try {
+        const jsonInput = document.getElementById('importSettingsinput').value;
+
+        const json = JSON.parse(jsonInput);
+        clearAll();
+        json["Grep"].forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+        json["Grep_v"].forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
+        json["Highlight"].forEach(item => addSearchWord_load(item.word, item.color));
+
+        } catch (error) {
+        }
+    }
+
+    function exportSettings() {
+        try {
+            const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
+            const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
+            const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
+            word: input.value,
+            color: input.nextElementSibling.style.backgroundColor
+            })).filter(item => item.word);
+            jsonObject = { "Grep": grepWords, "Grep_v": grepVWords, "Highlight": searchWords };
+            const jsonOutput = document.getElementById('importSettingsinput');
+            jsonOutput.value = JSON.stringify(jsonObject);
+        } catch (error) {
+        }
+    }
+
+    // 受信ロジック
+    window.addEventListener('message', event => {
+        const message = event.data;
+        if (message.command === 'loadSettings') {
+        clearAll();
+        // Grepワードのフォームをクリアして更新
+        message.grepWords.forEach(word => addGrepWord_load(word, 'grepContainer', 'grepInput'));
+        message.grepVWords.forEach(word => addGrepWord_load(word, 'grepVContainer', 'grepVInput'));
+        // Searchワードのフォームをクリアして更新
+        message.searchWords.forEach(item => addSearchWord_load(item.word, item.color));
+
+        const settingName = document.getElementById('settingName');
+        settingName.value = message.settingName;
+
+        loadbuttun = document.getElementById('LoadButtun');
+        loadbuttun.textContent = 'Load';
+        loadbuttun.disabled = false;
+        saveSettings_current();
+        } else if (message.command === 'updateSettingsList') {
+        const settingList = document.getElementById('settingList');
+        settingList.innerHTML = '';
+        message.settings.forEach(setting => {
+            const option = document.createElement('option');
+            option.value = setting;
+            option.textContent = setting;
+            settingList.appendChild(option);
+        });
+        delbuttun = document.getElementById('DelButtun');
+        delbuttun.textContent = 'Delete';
+        } else if (message.command === 'Complete') {
+        delbuttun = document.getElementById('DelButtun');
+        delbuttun.textContent = 'Delete';
+        mainbuttun = document.getElementById('MainButtun');
+        mainbuttun.textContent = 'Grep & Highlight';
+        } else if (message.command === 'requestState') {
+        const grepWords = Array.from(document.getElementsByClassName('grepInput'))
+            .map(input => input.value)
+            .filter(word => word);
+        const searchWords = Array.from(document.getElementsByClassName('searchInput'))
+            .map(input => ({
+            word: input.value,
+            color: input.nextElementSibling.style.backgroundColor
+            }))
+            .filter(item => item.word);
+        vscode.postMessage({
+            command: 'sendState',
+            grepWords,
+            searchWords
+        });
+        }
+    });
+
+    function addColorOptions() {
+        const colorselect = document.getElementById("colorList");
+        // 色のリストを <select> に追加
+        colors.forEach(color => {
+            const option = document.createElement("option");
+            option.value = color;
+            option.textContent = color;
+            if (color === "none") {
+            option.textContent = "Select color";
+            option.style.color = "black";
+            option.style.backgroundColor = "white";
+            } else {
+            option.style.color = color;
+            option.style.backgroundColor = color;
+            }
+            colorselect.appendChild(option);
+        });
+
+        // プルダウン選択時にも色を変更
+        colorselect.addEventListener("change", function(){
+        var index = this.selectedIndex;
+        addSearchWord_load("", colors[ index ]);
+        this.style.backgroundColor = colors[ index ];
+        this.value = colors[0];
+        });
+        colorselect.style.backgroundColor = "black";
+        colorselect.style.color = "white";
+    }
+
+    function init() {
+        addSearchWord();
+        addColorOptions();
+    }
+    init();
+    </script>
+</body>
+</html>

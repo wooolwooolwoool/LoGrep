@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+    body {
+        font-family: Arial, sans-serif;
+        padding: 10px;
+    }
+    pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font-size: 15px; /* 初期フォントサイズ */
+    }
+    button {
+        margin: 2px;
+        padding: 2px;
+        font-size: 14px;
+    }
+
+    .container {
+        width: 100%; /* 親要素にフィット */
+        font-family: monospace;
+        white-space: pre; /* 折り返し無効 */
+        overflow-x: auto; /* 横スクロール有効 */
+        overflow-y: hidden;
+        box-sizing: border-box;
+    }
+
+    .log-line {
+        align-items: center;
+        padding: 1px 0px;
+        cursor: text;
+    }
+
+    .log-line.selected {
+        background-color: #cce5ff;
+    }
+
+    .log-text {
+        margin-left: 8px;
+        white-space: pre;
+        flex: 1;
+    }
+
+    /* 折り返し有効時のスタイル */
+    .wrap {
+        white-space: pre-wrap; /* 折り返しを有効化 */
+        word-wrap: break-word;
+        word-break: break-all;
+        overflow-x: hidden; /* 横スクロールを無効化 */
+        overflow-y: auto;
+    }
+
+    /* チェックボックスをスクロールしても上部に固定 */
+    .sticky {
+        position: sticky;
+        top: 0;
+        padding: 0px;
+        border-bottom: 1px solid var(--vscode-editor-foreground);
+        background-color: var(--vscode-editor-background);
+        z-index: 10;
+    }
+    .highlight {
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+        white-space: inherit;
+        word-break: inherit;
+        overflow-wrap: inherit;
+    }
+    ${highlightCSS}
+    </style>
+</head>
+<body>
+    <div class="sticky">
+    <button onclick="resizeText(1)">Zoom In</button>
+    <button onclick="resizeText(-1)">Zoom Out</button>
+    <label>
+        <input type="checkbox" id="wrapToggle" />
+        Enable wrap
+    </label>
+    <label>
+        <input type="checkbox" id="trimToggle" />
+        Trim mode
+    </label>
+    <button onclick="deleteSelected()" id="removelinebuttun" disabled=true>Remove lines</button>
+    <!--
+    <input type="text" id="searchBox" placeholder="Search.." />
+    <button id="searchButton">Search</button>
+    <button id="prevButton">▲</button>
+    <button id="nextButton">▼</button> -->
+
+    <!-- <input type="text" id="debuglog" placeholder="" /> -->
+    </div>
+    <div id="textContainer" class="container">${highlightedResults}</div>
+    <script>
+        function printdebuglog(log) {
+            const textElement = document.getElementById('debuglog');
+            if (textElement) {textElement.value = String(log);}
+        }
+
+        function resizeText(step) {
+            const textElement = document.getElementById('textContainer');
+            let currentSize = parseFloat(window.getComputedStyle(textElement).fontSize);
+            let newSize = currentSize + step;
+
+            // 最小フォントサイズを制限（オプション）
+            if (newSize < 10) newSize = 10;
+
+            // 最大フォントサイズを制限（オプション）
+            if (newSize > 40) newSize = 40;
+
+            textElement.style.fontSize = `${newSize}px`;
+        };
+        document.getElementById('wrapToggle').addEventListener('change', function(event) {
+            const container = document.getElementById('textContainer');
+            if (event.target.checked) {
+                container.classList.add('wrap');
+            } else {
+                container.classList.remove('wrap');
+            }
+        });
+
+        const logContainer = document.getElementById("textContainer");
+        let lastClicked = null;
+        let trimEnabled = false;
+
+        document.getElementById('trimToggle').addEventListener('change', function(event) {
+        const removelinebuttun = document.getElementById('removelinebuttun');
+        if (event.target.checked) {
+            trimEnabled = true;
+            removelinebuttun.disabled = false;
+            const logContainer = document.getElementById("textContainer");
+            logContainer.style.userSelect = "none";
+            logContainer.style.cursor = "pointer";
+        } else {
+            trimEnabled = false;
+            removelinebuttun.disabled = true;
+            const selected = document.querySelectorAll(".log-line.selected");
+            selected.forEach(line => {
+                line.classList.remove("selected");
+            });
+            lastClicked = null;
+            const logContainer = document.getElementById("textContainer");
+            logContainer.style.userSelect = "auto";
+            logContainer.style.cursor = "auto";
+        }
+        });
+
+        logContainer.addEventListener("click", (e) => {
+        if (trimEnabled) {
+            const line = e.target.closest(".log-line");
+            if (!line || e.target.tagName === 'INPUT') return;
+
+            const lines = Array.from(logContainer.children);
+            const clickedIndex = lines.indexOf(line);
+
+            if (e.shiftKey && lastClicked !== null) {
+            const lastIndex = lines.indexOf(lastClicked);
+            const [start, end] = [clickedIndex, lastIndex].sort((a, b) => a - b);
+            for (let i = start; i <= end; i++) {
+                selectLine(lines[i], true);
+            }
+            } else {
+            const isSelected = line.classList.contains("selected");
+            selectLine(line, !isSelected);
+            }
+            lastClicked = line;
+        }
+        });
+
+        function selectLine(line, selected) {
+        line.classList.toggle("selected", selected);
+        }
+
+        function deleteSelected() {
+        const selected = document.querySelectorAll(".log-line.selected");
+        selected.forEach(line => line.remove());
+        lastClicked = null;
+        }
+
+        // 検索実行
+        function searchText() {
+            const container = document.getElementById('textContainer');
+            const searchText = document.getElementById('searchBox').value;
+            if (!searchText) return;
+
+            // 既存のハイライトをクリア
+            container.innerHTML = container.innerHTML.replace(/<pre class="highlight">(.*)<\\/pre>/g, '$1');
+
+            searchResults = [];
+            searchIndex = 0;
+
+            // 検索してマッチ箇所をハイライト
+            const regex = new RegExp(`(${searchText})`, 'gi');
+            container.innerHTML = container.innerHTML.replace(regex, (match) => {
+                searchResults.push(match);
+                return `<pre class="highlight">${match}</pre>`;
+            });
+
+            if (searchResults.length > 0) {
+                jumpToResult(0); // 最初の検索結果にジャンプ
+            }
+        }
+
+        // ジャンプ処理
+        function jumpToResult(index) {
+            const highlights = document.querySelectorAll('.highlight');
+            if (highlights.length === 0) return;
+
+            // すべてのハイライトの強調解除
+            highlights.forEach((el) => el.classList.remove('active-highlight'));
+
+            if (index < 0) index = highlights.length - 1;
+            if (index >= highlights.length) index = 0;
+
+            searchIndex = index;
+            const target = highlights[searchIndex];
+
+            const target = Matches[searchIndex];
+            target.scrollIntoView(false);
+            update_serchcount(searchIndex + 1);
+        }
+
+        // 次へボタン
+        document.getElementById('nextButton').addEventListener('click', () => {
+            if (searchResults.length > 0) {
+                jumpToResult(searchIndex + 1);
+            }
+        });
+
+        // 前へボタン
+        document.getElementById('prevButton').addEventListener('click', () => {
+            if (searchResults.length > 0) {
+                jumpToResult(searchIndex - 1);
+            }
+        });
+
+        // 検索ボタンクリック or Enterで検索実行
+        document.getElementById('searchButton').addEventListener('click', searchText);
+        document.getElementById('searchBox').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                searchText();
+            }
+        });
+    </script>
+</body>
+</html>
