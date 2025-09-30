@@ -152,16 +152,16 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (results.length > 0) {
-      await this.showResultsInWebview(results, searchWords);
+      await this.showResultsInWebview(doc.fileName.split("/").slice(-1)[0], results, searchWords);
     } else {
       vscode.window.showInformationMessage('No matches found');
     }
   }
 
-  private async showResultsInWebview(results: string[], searchWords: { word: string; color: string }[]) {
+  private async showResultsInWebview(fileName: string, results: string[], searchWords: { word: string; color: string }[]) {
     const panel = vscode.window.createWebviewPanel(
-      'grepResults',
-      'Grep Results',
+      'grepResult',
+      `Result ${fileName}`,
       vscode.ViewColumn.One,
       { enableScripts: true }
     );
@@ -212,7 +212,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       `;
     }).join('\n');
     console.log("Try to load results template.");
-    panel.webview.html = loadTemplate("resluts").replace('${highlightCSS}', highlightCSS).replace('${highlightedResults}', highlightedResults);
+    panel.webview.html = loadTemplate("results").replace('${highlightCSS}', highlightCSS).replace('${highlightedResults}', highlightedResults);
   }
 
   private async saveSettings(name: string, grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], webview: vscode.Webview) {

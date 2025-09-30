@@ -10,7 +10,7 @@
     pre {
         white-space: pre-wrap;
         word-wrap: break-word;
-        font-size: 15px; /* 初期フォントサイズ */
+        font-size: 14px; /* 初期フォントサイズ */
     }
     button {
         margin: 2px;
@@ -85,11 +85,13 @@
         Trim mode
     </label>
     <button onclick="deleteSelected()" id="removelinebuttun" disabled=true>Remove lines</button>
-    <!--
-    <input type="text" id="searchBox" placeholder="Search.." />
-    <button id="searchButton">Search</button>
-    <button id="prevButton">▲</button>
-    <button id="nextButton">▼</button> -->
+    <div style="display: flex; align-items: center; gap: 4px;">
+        <input type="text" id="searchBox" placeholder="Search.." />
+        <button id="searchButton">Search</button>
+        <button id="prevButton">▲</button>
+        <button id="nextButton">▼</button>
+        <pre id="serachCount" style="margin: 0;"></pre>
+    </div>
 
     <!-- <input type="text" id="debuglog" placeholder="" /> -->
     </div>
@@ -98,6 +100,13 @@
         function printdebuglog(log) {
             const textElement = document.getElementById('debuglog');
             if (textElement) {textElement.value = String(log);}
+        }
+        function update_serchcount(count) {
+            const textElement = document.getElementById('serachCount');
+            const Matches = document.querySelectorAll('.Match');
+            if (textElement) {
+                textElement.textContent = `${count}/${Matches.length}`;
+            }
         }
 
         function resizeText(step) {
@@ -186,8 +195,11 @@
             const searchText = document.getElementById('searchBox').value;
             if (!searchText) return;
 
-            // 既存のハイライトをクリア
-            container.innerHTML = container.innerHTML.replace(/<pre class="highlight">(.*)<\\/pre>/g, '$1');
+            // 検索結果をクリア
+            const Matches = document.querySelectorAll('.Match');
+            Matches.forEach(match => {
+                match.classList.remove('Match');
+            });
 
             searchResults = [];
             searchIndex = 0;
@@ -196,30 +208,26 @@
             const regex = new RegExp(`(${searchText})`, 'gi');
             container.innerHTML = container.innerHTML.replace(regex, (match) => {
                 searchResults.push(match);
-                return `<pre class="highlight">${match}</pre>`;
+                return `<span class="Match">${match}</span>`;
             });
 
             if (searchResults.length > 0) {
                 jumpToResult(0); // 最初の検索結果にジャンプ
             }
+            update_serchcount(0);
         }
 
         // ジャンプ処理
         function jumpToResult(index) {
-            const highlights = document.querySelectorAll('.highlight');
-            if (highlights.length === 0) return;
+            const Matches = document.querySelectorAll('.Match');
+            if (Matches.length === 0) return;
 
-            // すべてのハイライトの強調解除
-            highlights.forEach((el) => el.classList.remove('active-highlight'));
-
-            if (index < 0) index = highlights.length - 1;
-            if (index >= highlights.length) index = 0;
-
+            if (index < 0) index = Matches.length - 1;
+            if (index >= Matches.length) index = 0;
             searchIndex = index;
-            const target = highlights[searchIndex];
 
             const target = Matches[searchIndex];
-            target.scrollIntoView(false);
+            target.scrollIntoView();
             update_serchcount(searchIndex + 1);
         }
 

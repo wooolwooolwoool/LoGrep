@@ -98,7 +98,7 @@
     </div>
     <div class="center-button">
     <button onclick="clearAll()" id="ClearButtun">Clear All</button>
-    <button onclick="clearBrank()" id="ClearButtun">Clear Brank</button>
+    <button onclick="clearBlank()" id="ClearButtun">Clear Blank</button>
     </div>
 
     <hr>
@@ -256,7 +256,7 @@
         searchContainer.innerHTML = '';
     }
 
-    function clearBrank() {
+    function clearBlank() {
         const grepWords = Array.from(document.getElementsByClassName('grepInput')).map(input => input.value).filter(word => word);
         const grepVWords = Array.from(document.getElementsByClassName('grepVInput')).map(input => input.value).filter(word => word);
         const searchWords = Array.from(document.getElementsByClassName('searchInput')).map((input, index) => ({
