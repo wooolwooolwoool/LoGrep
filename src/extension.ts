@@ -163,7 +163,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       'grepResult',
       `Result ${fileName}`,
       vscode.ViewColumn.One,
-      { enableScripts: true }
+      { enableScripts: true, retainContextWhenHidden: true, enableFindWidget: true }
     );
 
     // 1. 色ごとにクラスを生成
