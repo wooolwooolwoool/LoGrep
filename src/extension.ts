@@ -281,17 +281,24 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage('No setting selected');
       return;
     }
-
-    const config = vscode.workspace.getConfiguration('grepExtension');
-    const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
-    if (currentSettings && currentSettings[name]) {
-      currentSettings[name] = undefined;
-      await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
+    try {
+      const config = vscode.workspace.getConfiguration('grepExtension');
+      const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
+      if (currentSettings && currentSettings[name]) {
+        currentSettings[name] = undefined;
+        await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
+      }
+    } catch {
+      vscode.window.showErrorMessage(`Failed to delete settings '${name}'`);
     }
-    const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
-    if (backup && backup[name]) {
-      backup[name] = undefined;
-      await this.context.workspaceState.update('grepExtension_backup', backup);
+    try {
+      const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+      if (backup && backup[name]) {
+        backup[name] = undefined;
+        await this.context.workspaceState.update('grepExtension_backup', backup);
+      }
+    } catch {
+      vscode.window.showErrorMessage(`Failed to delete backup settings '${name}'`);
     }
     vscode.window.showInformationMessage(`Settings '${name}' deleted`);
 
@@ -307,9 +314,11 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     const settings = new Set(Object.keys(config));
 
     // バックアップの名前があれば追加
-    const backup = this.context.workspaceState.get<{ name: string }>('grepExtension_backup');
-    if (backup?.name) {
-      settings.add(backup.name);
+    const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+    if (backup) {
+      Object.keys(backup).forEach(name => {
+        settings.add(name);
+      })
     }
 
     webview.postMessage({
