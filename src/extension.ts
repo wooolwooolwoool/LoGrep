@@ -80,6 +80,11 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
         this.Loggger(webviewView.webview, message.msg);
       } else if (message.command === 'saveSettings_current') {
         this.saveStateFromWebview(message.grepWords, message.grepVWords, message.searchWords, message.settingName, webviewView.webview);
+      } else if (message.command === 'saveAllSettings') {
+        this.saveAllSettings(message.name, message.setttings, webviewView.webview);
+      } else if (message.command === 'exportAllSettings') {
+        const allSettings = await this.exportAllSettings();
+        webviewView.webview.postMessage({ command: 'exportedAllSettings', data: allSettings });
       }
       webviewView.webview.postMessage({ command: 'Complete' });
     });
@@ -238,6 +243,48 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     this.getSettingsList(webview);
   }
 
+  private validateCongigs(settting: string): boolean {
+    try {
+      // JSONであること、grep, highlightを持つことを確認。
+      var result = true;
+      const s_ = JSON.parse(settting);
+      Object.keys(s_).forEach(name => {
+        if (!s_[name].grepWords || !s_[name].searchWords) {
+          result = false;
+        }
+      })
+      return result;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async saveAllSettings(name: string, setttings: string, webview: vscode.Webview) {
+    if (!this.validateCongigs(setttings)) {
+      vscode.window.showErrorMessage(`Settings format is invalid.`);
+      return;
+    }
+    try {
+      const currentSettings = JSON.parse(setttings);
+      await this.context.workspaceState.update('grepExtension_useworkspaceState', true);
+      await this.context.workspaceState.update('grepExtension_backup', currentSettings);
+    } catch (error) {
+      vscode.window.showInformationMessage('Failed to save settings to Backup');
+    }
+    this.getSettingsList(webview);
+  }
+
+  private async exportAllSettings() {
+    const config = vscode.workspace.getConfiguration('grepExtension').get<{ [key: string]: any }>('settings') || {};
+    const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+    Object.keys(config || {}).forEach(name => {
+      if (!backup[name]) {
+        backup[name] = config![name];
+      }
+    })
+    return JSON.stringify(backup, null, 2);
+  }
+
   private async loadSettings(name: string, webview: vscode.Webview) {
     // まずバックアップがあるか確認し、あればそちらを優先
     const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup');
@@ -310,15 +357,18 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
   // 設定名の一覧を取得してWebviewに送信
   private async getSettingsList(webview: vscode.Webview) {
-    const config = vscode.workspace.getConfiguration('grepExtension').get<{ [key: string]: any }>('settings') || {};
-    const settings = new Set(Object.keys(config));
-
     // バックアップの名前があれば追加
     const backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
-    if (backup) {
-      Object.keys(backup).forEach(name => {
-        settings.add(name);
-      })
+    const useworkspaceState = this.context.workspaceState.get< boolean >('grepExtension_useworkspaceState') || false;
+    const settings = new Set(Object.keys(backup));
+
+    if (!useworkspaceState) {
+      const config = vscode.workspace.getConfiguration('grepExtension').get<{ [key: string]: any }>('settings') || {};
+      if (config) {
+        Object.keys(config).forEach(name => {
+          settings.add(name);
+        })
+      }
     }
 
     webview.postMessage({
@@ -333,9 +383,23 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     console.log(vscode.window.activeColorTheme.kind);
   }
 
+  private readColorSettings(teme: string): string[] {
+      const config = vscode.workspace.getConfiguration('grepExtension');
+      const colorList = config.get<string[]>('colorList_' + teme);
+
+      if (colorList && Array.isArray(colorList)) {
+          // vscode.window.showInformationMessage(`Loaded colors: ${colorList.join(', ')}`);
+          return colorList;
+      }
+      vscode.window.showInformationMessage('Using default color list.');
+      return ["red", "green", "blue"];
+  }
+
   private getHtml(): string {
-    const lightColors = "['none', 'lightyellow', 'khaki', 'gold', 'lightsalmon', 'salmon', 'lightcoral', 'pink', 'hotpink', 'lightgreen', 'lime', 'aquamarine', 'skyblue', 'dodgerblue', 'fuchsia']";
-    const darkColors = "['none', 'dimgray', 'slategray', 'darkolivegreen', 'olive', 'darkgreen', 'seagreen', 'teal', 'cadetblue', 'navy', 'indigo', 'purple', 'darkred', 'firebrick',  'chocolate', 'sienna', 'darkgoldenrod']";
+    // const lightColors = "['none', 'lightyellow', 'khaki', 'gold', 'lightsalmon', 'salmon', 'lightcoral', 'pink', 'hotpink', 'lightgreen', 'lime', 'aquamarine', 'skyblue', 'dodgerblue', 'fuchsia']";
+    // const darkColors = "['none', 'dimgray', 'slategray', 'darkolivegreen', 'olive', 'darkgreen', 'seagreen', 'teal', 'cadetblue', 'navy', 'indigo', 'purple', 'darkred', 'firebrick',  'chocolate', 'sienna', 'darkgoldenrod']";
+    const lightColors = JSON.stringify(["none"].concat(this.readColorSettings("light")));
+    const darkColors = JSON.stringify(["none"].concat(this.readColorSettings("dark")));
     const Colors = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark
       ? darkColors
       : lightColors;

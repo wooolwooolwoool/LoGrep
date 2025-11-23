@@ -125,6 +125,20 @@
     <button onclick="exportSettings()">Export</button>
     </div>
 
+    <hr>
+
+
+    <details><summary>Import & Export ALL</summary>
+    <textarea id="importSettingsinputAll" style="width: 100%; height: 100px;" placeholder="Setting as JSON"></textarea><br>
+    <div style="color: red; font-weight: bold;">
+        WARNING: This action will reset all your settings.
+    </div>
+    <div class="center-button">
+    <button onclick="exportSettingsAll()">Load</button>
+    <button onclick="importSettingsAll()" style="color: red">Reset All</button>
+    </div>
+    </details>
+
     <script>
     const vscode = acquireVsCodeApi();
     const colors = ${Colors};
@@ -300,6 +314,18 @@
         }
     }
 
+    function importSettingsAll() {
+        try {
+            const jsonInput = document.getElementById('importSettingsinputAll').value;
+            vscode.postMessage({ command: 'saveAllSettings', setttings: jsonInput });
+        } catch (error) {
+        }
+    }
+
+    function exportSettingsAll() {
+        vscode.postMessage({ command: 'exportAllSettings' });
+    }
+
     // 受信ロジック
     window.addEventListener('message', event => {
         const message = event.data;
@@ -349,6 +375,9 @@
             grepWords,
             searchWords
         });
+        } else if (message.command === 'exportedAllSettings') {
+            const exportInput = document.getElementById('importSettingsinputAll');
+            exportInput.value = message.data;
         }
     });
 

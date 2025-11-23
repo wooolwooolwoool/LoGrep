@@ -2,7 +2,7 @@
   "name": "LoGrep",
   "displayName": "Grep and Highlight",
   "description": "Grep and Highlight Tool to assist to check logs",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "icon": "media/icon.png",
   "publisher": "woool",
   "repository": {
@@ -39,7 +39,22 @@
         }
       ]
     },
-    "commands": []
+    "commands": [],
+    "configuration": {
+        "title": "Grep & Highlight Settings",
+        "properties": {
+            "grepExtension.colorList_dark": {
+                "type": "array",
+                "default": ["dimgray", "slategray", "darkolivegreen", "olive", "darkgreen", "seagreen", "teal", "cadetblue", "navy", "indigo", "purple", "darkred", "firebrick",  "chocolate", "sienna", "darkgoldenrod"],
+                "description": "A list of custom colors for dark."
+            },
+            "grepExtension.colorList_light": {
+                "type": "array",
+                "default": ["lightyellow", "khaki", "gold", "lightsalmon", "salmon", "lightcoral", "pink", "hotpink", "lightgreen", "lime", "aquamarine", "skyblue", "dodgerblue", "fuchsia"],
+                "description": "A list of custom colors for light."
+            }
+        }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
