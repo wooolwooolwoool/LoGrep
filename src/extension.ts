@@ -81,10 +81,12 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       } else if (message.command === 'saveSettings_current') {
         this.saveStateFromWebview(message.grepWords, message.grepVWords, message.searchWords, message.settingName, webviewView.webview);
       } else if (message.command === 'saveAllSettings') {
-        this.saveAllSettings(message.name, message.setttings, webviewView.webview);
+        this.saveAllSettings(message.setttings, webviewView.webview);
       } else if (message.command === 'exportAllSettings') {
         const allSettings = await this.exportAllSettings();
         webviewView.webview.postMessage({ command: 'exportedAllSettings', data: allSettings });
+      } else if (message.command === 'applyRenameSort') {
+        this.applyRenameSort(message.data, webviewView.webview);
       }
       webviewView.webview.postMessage({ command: 'Complete' });
     });
@@ -259,7 +261,7 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async saveAllSettings(name: string, setttings: string, webview: vscode.Webview) {
+  private async saveAllSettings(setttings: string, webview: vscode.Webview) {
     if (!this.validateCongigs(setttings)) {
       vscode.window.showErrorMessage(`Settings format is invalid.`);
       return;
@@ -283,6 +285,19 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       }
     })
     return JSON.stringify(backup, null, 2);
+  }
+
+  private async applyRenameSort(data: { current: string; new: string }[], webview: vscode.Webview) {
+    const current_settings: {[key: string]: any} = JSON.parse(await this.exportAllSettings());
+    var new_settings: {[key: string]: any} = {};
+    for (const item of data) {
+      if (current_settings && item.new !== "") {
+        new_settings[item.new] = JSON.parse(JSON.stringify(current_settings[item.current]));
+      } else {
+        new_settings[item.current] = JSON.parse(JSON.stringify(current_settings[item.current]));
+      }
+    }
+    this.saveAllSettings(JSON.stringify(new_settings), webview);
   }
 
   private async loadSettings(name: string, webview: vscode.Webview) {
