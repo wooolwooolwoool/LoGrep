@@ -20,6 +20,10 @@ This is the same as the -v option.
 You can Highlight by multi word.
 Highlight color changes depending on whether VSCode Theme is Dark or not.
 
+### Replace
+
+You can replace by multi word paires.
+
 ### Setting Save & Load
 
 If you want save current setting, fill name and click "Save".

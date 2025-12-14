@@ -45,33 +45,22 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.getHtml();
     this.getSettingsList(webviewView.webview);
-    const lastState = this.context.workspaceState.get<{ grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], settingName: string }>('lastState');
-    if (lastState) {
-      if (!lastState.grepVWords) {
-        lastState.grepVWords = [];
-      }
-      webviewView.webview.postMessage({
-        command: 'loadSettings',
-        grepWords: lastState.grepWords,
-        grepVWords: lastState.grepVWords,
-        searchWords: lastState.searchWords,
-        settingName: lastState.settingName
-      });
-    }
-
+    this.restoreState(webviewView.webview);
     webviewView.onDidChangeVisibility(() => {
       if (!webviewView.visible) {
       } else {
-        this.restoreState(webviewView.webview);
         this.getSettingsList(webviewView.webview);
+        this.restoreState(webviewView.webview);
       }
     });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.command === 'grep') {
-        this.grepInActiveEditor(message.grepWords, message.grepVWords, message.searchWords);
+        this.grepInActiveEditor(message.grepWords, message.grepVWords,
+          message.searchWords, message.replaceWords);
       } else if (message.command === 'saveSettings') {
-        this.saveSettings(message.name, message.grepWords, message.grepVWords, message.searchWords, webviewView.webview);
+        this.saveSettings(message.name, message.grepWords, message.grepVWords,
+          message.searchWords, message.replaceWords, webviewView.webview);
       } else if (message.command === 'loadSettings') {
         this.loadSettings(message.name, webviewView.webview);
       } else if (message.command === 'deleteSetting') {
@@ -79,7 +68,9 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       } else if (message.command === 'Logger') {
         this.Loggger(webviewView.webview, message.msg);
       } else if (message.command === 'saveSettings_current') {
-        this.saveStateFromWebview(message.grepWords, message.grepVWords, message.searchWords, message.settingName, webviewView.webview);
+        this.saveStateFromWebview(message.grepWords, message.grepVWords,
+          message.searchWords, message.replaceWords, message.settingName,
+          webviewView.webview);
       } else if (message.command === 'saveAllSettings') {
         this.saveAllSettings(message.setttings, webviewView.webview);
       } else if (message.command === 'exportAllSettings') {
@@ -93,8 +84,12 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
   }
 
   // state を保存するメソッド
-  private async saveStateFromWebview(grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], settingName: string, webview: vscode.Webview) {
-    const response = {grepWords: grepWords, grepVWords: grepVWords, searchWords: searchWords, settingName: settingName};
+  private async saveStateFromWebview(grepWords: string[], grepVWords: string[],
+    searchWords: { word: string; color: string }[],
+    replaceWords: { before: string; after: string }[],
+    settingName: string, webview: vscode.Webview) {
+    const response = {grepWords: grepWords, grepVWords: grepVWords,
+      searchWords: searchWords, replaceWords: replaceWords, settingName: settingName};
     if (response) {
       this.context.workspaceState.update('lastState', response);
       console.log('State saved:', response);
@@ -107,13 +102,20 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     if (!state.grepVWords) {
       state.grepVWords = [];
     }
+    if (!state.replaceWord) {
+      state.replaceWord = [];
+    }
     if (state) {
-      webview.postMessage({ command: 'loadSettings', grepWords: state.grepWords, grepVWords: state.grepVWords, searchWords: state.searchWords, settingName: state.settingName });
+      webview.postMessage({ command: 'loadSettings', grepWords: state.grepWords,
+        grepVWords: state.grepVWords, searchWords: state.searchWords,
+        replaceWords: state.replaceWords, settingName: state.settingName });
       console.log('State restored:', state);
     }
   }
 
-  private async grepInActiveEditor(grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[]) {
+  private async grepInActiveEditor(grepWords: string[], grepVWords: string[],
+    searchWords: { word: string; color: string }[],
+    replaceWords: { before: string; after: string }[]) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showErrorMessage('No active editor found');
@@ -156,6 +158,33 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
           }
         }
       }
+    }
+    // Replace in results
+    if (replaceWords && replaceWords.length > 0) {
+      results = results.map(line => {
+        let modifiedLine = line;
+        replaceWords.forEach(({ before, after }) => {
+          if (before) {
+            const escapedWord = before.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedWord, 'g');
+            modifiedLine = modifiedLine.replace(regex, after);
+          }
+        });
+        return modifiedLine;
+      });
+      // searchWords の単語も置換
+      searchWords.forEach(sw => {
+        let result = sw;
+        replaceWords.forEach(({ before, after }) => {
+          if (before) {
+            const escapedWord = before.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedWord, 'g');
+            if (sw.word === before) {
+              result.word = sw.word.replace(regex, after);
+            }
+          }});
+          return result;
+      });
     }
 
     if (results.length > 0) {
@@ -222,25 +251,27 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     panel.webview.html = loadTemplate("results").replace('${highlightCSS}', highlightCSS).replace('${highlightedResults}', highlightedResults);
   }
 
-  private async saveSettings(name: string, grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], webview: vscode.Webview) {
-    const config = vscode.workspace.getConfiguration('grepExtension');
-    const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
-    currentSettings[name] = { grepWords, grepVWords, searchWords };
+  private async saveSettings(name: string, grepWords: string[], grepVWords: string[], searchWords: { word: string; color: string }[], replaceWords: { before: string, after: string }[], webview: vscode.Webview) {
+    // const config = vscode.workspace.getConfiguration('grepExtension');
+    // const currentSettings = config.get<{ [key: string]: any }>('settings') || {};
+    // currentSettings[name] = { grepWords, grepVWords, searchWords, replaceWords };
 
-    try {
-      await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage(`Settings '${name}' saved`);
+    // try {
+    //   await config.update('settings', currentSettings, vscode.ConfigurationTarget.Global);
+    //   // vscode.window.showInformationMessage(`Settings '${name}' saved`);
 
-      // backup削除（正常に保存できた場合）
-      await this.context.workspaceState.update('grepExtension_backup', undefined);
-    } catch (error) {
-      vscode.window.showInformationMessage(`Settings '${name}' saved to Backup`);
+    //   // backup削除（正常に保存できた場合）
+    //   await this.context.workspaceState.update('grepExtension_backup', undefined);
+    // } catch (error) {}
 
-      // バックアップとして保存
-      let backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
-      backup[name] = { grepWords, grepVWords, searchWords };
-      await this.context.workspaceState.update('grepExtension_backup', backup);
-    }
+    // バックアップとして保存
+    let backup = this.context.workspaceState.get<{ [key: string]: any }>('grepExtension_backup') || {};
+    backup[name] = {
+      grepWords: grepWords, grepVWords: grepVWords,
+      searchWords: searchWords, replaceWords: replaceWords
+    };
+    await this.context.workspaceState.update('grepExtension_backup', backup);
+    vscode.window.showInformationMessage(`Settings '${name}' saved to Backup`);
 
     this.getSettingsList(webview);
   }
@@ -307,14 +338,21 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
     if (backup && backup[name]) {
       // vscode.window.showWarningMessage(`Loaded backup settings for '${name}'`);
       console.log(`Loaded backup settings for '${name}'`);
-      if (!backup.grepVWords) {
-        backup.grepVWords = [];
+      if (!backup[name].grepVWords) {
+        backup[name].grepVWords = [];
+      }
+      if (!backup[name].searchWords) {
+        backup[name].searchWords = [];
+      }
+      if (!backup[name].replaceWords) {
+        backup[name].replaceWords = [];
       }
       webview.postMessage({
         command: 'loadSettings',
         grepWords: backup[name].grepWords,
         grepVWords: backup[name].grepVWords,
         searchWords: backup[name].searchWords,
+        replaceWords: backup[name].replaceWords,
         settingName: name
       });
       return;
@@ -326,11 +364,18 @@ class GrepInputViewProvider implements vscode.WebviewViewProvider {
       if (!config[name].grepVWords) {
         config[name].grepVWords = [];
       }
+      if (!config[name].searchWords) {
+        config[name].searchWords = [];
+      }
+      if (!config[name].replaceWords) {
+        config[name].replaceWords = [];
+      }
       webview.postMessage({
         command: 'loadSettings',
         grepWords: config[name].grepWords,
         grepVWords: config[name].grepVWords,
         searchWords: config[name].searchWords,
+        replaceWords: config[name].replaceWords,
         settingName: name
       });
     } else {
